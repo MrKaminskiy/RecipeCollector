@@ -92,7 +92,7 @@ async def get_recipes(user_id: str = Depends(get_current_user_id)):
     """Получить все рецепты пользователя"""
     try:
         user_recipes = get_user_recipes(user_id)
-    return user_recipes
+        return user_recipes
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -103,29 +103,29 @@ async def create_recipe(
 ):
     """Создать новый рецепт"""
     try:
-    recipe_data = {
-        "user_id": user_id,
-        "title": recipe.title,
-        "description": recipe.description,
-        "ingredients": recipe.ingredients,
-        "instructions": recipe.instructions,
-        "cooking_time": recipe.cooking_time,
-        "servings": recipe.servings,
-        "difficulty": recipe.difficulty,
-        "cuisine": recipe.cuisine,
-        "tags": recipe.tags,
-        "image_url": recipe.image_url,
-        "source_url": recipe.source_url,
+        recipe_data = {
+            "user_id": user_id,
+            "title": recipe.title,
+            "description": recipe.description,
+            "ingredients": recipe.ingredients,
+            "instructions": recipe.instructions,
+            "cooking_time": recipe.cooking_time,
+            "servings": recipe.servings,
+            "difficulty": recipe.difficulty,
+            "cuisine": recipe.cuisine,
+            "tags": recipe.tags,
+            "image_url": recipe.image_url,
+            "source_url": recipe.source_url,
             "is_favorite": False
-    }
-    
+        }
+        
         saved_recipe = save_recipe(recipe_data)
-    
-    return APIResponse(
-        success=True,
+        
+        return APIResponse(
+            success=True,
             data=RecipeResponse(**saved_recipe),
-        message="Recipe created successfully"
-    )
+            message="Recipe created successfully"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -138,15 +138,15 @@ async def get_recipe(
     try:
         recipe = get_recipe(recipe_id)
         if not recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found")
-    
-    if recipe.get("user_id") != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    return APIResponse(
-        success=True,
-        data=RecipeResponse(**recipe)
-    )
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        
+        if recipe.get("user_id") != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        return APIResponse(
+            success=True,
+            data=RecipeResponse(**recipe)
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -163,33 +163,33 @@ async def update_recipe(
         # Сначала проверяем существование рецепта
         existing_recipe = get_recipe(recipe_id)
         if not existing_recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found")
-    
-    if existing_recipe.get("user_id") != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    recipe_data = {
-        "title": recipe.title,
-        "description": recipe.description,
-        "ingredients": recipe.ingredients,
-        "instructions": recipe.instructions,
-        "cooking_time": recipe.cooking_time,
-        "servings": recipe.servings,
-        "difficulty": recipe.difficulty,
-        "cuisine": recipe.cuisine,
-        "tags": recipe.tags,
-        "image_url": recipe.image_url,
-        "source_url": recipe.source_url,
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        
+        if existing_recipe.get("user_id") != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        recipe_data = {
+            "title": recipe.title,
+            "description": recipe.description,
+            "ingredients": recipe.ingredients,
+            "instructions": recipe.instructions,
+            "cooking_time": recipe.cooking_time,
+            "servings": recipe.servings,
+            "difficulty": recipe.difficulty,
+            "cuisine": recipe.cuisine,
+            "tags": recipe.tags,
+            "image_url": recipe.image_url,
+            "source_url": recipe.source_url,
             "is_favorite": existing_recipe.get("is_favorite", False)
-    }
-    
+        }
+        
         updated_recipe = update_recipe(recipe_id, recipe_data)
-    
-    return APIResponse(
-        success=True,
+        
+        return APIResponse(
+            success=True,
             data=RecipeResponse(**updated_recipe),
-        message="Recipe updated successfully"
-    )
+            message="Recipe updated successfully"
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -205,16 +205,16 @@ async def delete_recipe(
         # Сначала проверяем существование рецепта
         existing_recipe = get_recipe(recipe_id)
         if not existing_recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found")
-    
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        
         if existing_recipe.get("user_id") != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+            raise HTTPException(status_code=403, detail="Access denied")
+        
         success = delete_recipe(recipe_id)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to delete recipe")
         
-    return {"message": "Recipe deleted successfully"}
+        return {"message": "Recipe deleted successfully"}
     except HTTPException:
         raise
     except Exception as e:
