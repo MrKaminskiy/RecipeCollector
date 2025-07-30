@@ -1,82 +1,274 @@
 import openai
 import os
-from dotenv import load_dotenv
-from typing import Dict, Any
+from typing import Dict, Any, List
+import httpx
+from bs4 import BeautifulSoup
 import json
 import re
 
-load_dotenv()
+# Настройка OpenAI
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+async def extract_recipe_from_url(url: str) -> Dict[str, Any]:
+    """
+    Извлекает рецепт из URL с помощью AI
+    """
+    try:
+        # Получаем содержимое страницы
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            html_content = response.text
+        
+        # Извлекаем текст с помощью BeautifulSoup
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Удаляем скрипты и стили
+        for script in soup(["script", "style"]):
+            script.decompose()
+        
+        # Получаем текст
+        text = soup.get_text()
+        
+        # Очищаем текст
+        lines = (line.strip() for line in text.splitlines())
+        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+        text = ' '.join(chunk for chunk in chunks if chunk)
+        
+        # Ограничиваем размер текста для GPT
+        if len(text) > 4000:
+            text = text[:4000]
+        
+        # Используем GPT для извлечения структурированной информации
+        recipe_data = await extract_recipe_with_gpt(text, url)
+        
+        return recipe_data
+        
+    except Exception as e:
+        print(f"Error extracting recipe from URL: {e}")
+        # Возвращаем базовую структуру в случае ошибки
+        return {
+            "title": "Recipe from URL",
+            "description": f"Recipe extracted from {url}",
+            "ingredients": [],
+            "instructions": [],
+            "cooking_time": 30,
+            "servings": 2,
+            "difficulty": "Easy",
+            "cuisine": "International",
+            "tags": [],
+            "image_url": None,
+            "source_url": url
+        }
 
-if not os.getenv("OPENAI_API_KEY"):
-    raise ValueError("OPENAI_API_KEY must be set in .env file")
+async def extract_recipe_with_gpt(text: str, url: str) -> Dict[str, Any]:
+    """
+    Использует GPT для извлечения структурированной информации о рецепте
+    """
+    try:
+        system_prompt = """
+        Ты - эксперт по извлечению рецептов из текста. Извлеки структурированную информацию о рецепте.
+        
+        Верни JSON в следующем формате:
+        {
+            "title": "Название рецепта",
+            "description": "Краткое описание рецепта",
+            "ingredients": ["ингредиент 1", "ингредиент 2", ...],
+            "instructions": ["шаг 1", "шаг 2", ...],
+            "cooking_time": 30,
+            "servings": 2,
+            "difficulty": "Easy/Medium/Hard",
+            "cuisine": "Italian/Chinese/Japanese/Indian/Mexican/French/Mediterranean/American/International",
+            "tags": ["тег1", "тег2", ...],
+            "image_url": "URL изображения или null"
+        }
+        
+        Правила:
+        1. Если информация не найдена, используй разумные значения по умолчанию
+        2. cooking_time в минутах
+        3. servings - количество порций
+        4. difficulty: Easy (до 30 мин), Medium (30-60 мин), Hard (более 60 мин)
+        5. cuisine: определи по названию или ингредиентам
+        6. tags: добавь релевантные теги (например, "вегетарианский", "быстро", "десерт")
+        """
+        
+        user_prompt = f"""
+        Извлеки информацию о рецепте из следующего текста:
+        
+        {text}
+        
+        URL: {url}
+        """
+        
+        response = await openai.ChatCompletion.acreate(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.3,
+            max_tokens=1000
+        )
+        
+        # Парсим JSON ответ
+        content = response.choices[0].message.content
+        recipe_data = json.loads(content)
+        
+        # Добавляем source_url
+        recipe_data["source_url"] = url
+        
+        return recipe_data
+        
+    except Exception as e:
+        print(f"Error with GPT extraction: {e}")
+        # Возвращаем базовую структуру в случае ошибки
+        return {
+            "title": "Recipe from URL",
+            "description": f"Recipe extracted from {url}",
+            "ingredients": [],
+            "instructions": [],
+            "cooking_time": 30,
+            "servings": 2,
+            "difficulty": "Easy",
+            "cuisine": "International",
+            "tags": [],
+            "image_url": None,
+            "source_url": url
+        }
 
 async def extract_recipe_from_text(text: str) -> Dict[str, Any]:
     """
-    Извлекает структурированный рецепт из текста с помощью GPT
+    Извлекает рецепт из текста с помощью AI
     """
     try:
-        response = client.chat.completions.create(
-            model="gpt-4",
+        system_prompt = """
+        Ты - эксперт по извлечению рецептов из текста. Извлеки структурированную информацию о рецепте.
+        
+        Верни JSON в следующем формате:
+        {
+            "title": "Название рецепта",
+            "description": "Краткое описание рецепта",
+            "ingredients": ["ингредиент 1", "ингредиент 2", ...],
+            "instructions": ["шаг 1", "шаг 2", ...],
+            "cooking_time": 30,
+            "servings": 2,
+            "difficulty": "Easy/Medium/Hard",
+            "cuisine": "Italian/Chinese/Japanese/Indian/Mexican/French/Mediterranean/American/International",
+            "tags": ["тег1", "тег2", ...]
+        }
+        
+        Правила:
+        1. Если информация не найдена, используй разумные значения по умолчанию
+        2. cooking_time в минутах
+        3. servings - количество порций
+        4. difficulty: Easy (до 30 мин), Medium (30-60 мин), Hard (более 60 мин)
+        5. cuisine: определи по названию или ингредиентам
+        6. tags: добавь релевантные теги
+        """
+        
+        response = await openai.ChatCompletion.acreate(
+            model="gpt-3.5-turbo",
             messages=[
-                {
-                    "role": "system",
-                    "content": """
-You will extract a cooking recipe from the given transcript and/or description.
-The text may be in different languages (e.g., Russian, English).
-If the text is not in English, please first translate it to English.
-
-Then extract the following structured recipe format:
-
-{
-  title: \"Short title of the recipe\",
-  ingredients: ["list of ingredients with amounts if mentioned"],
-  steps: ["step-by-step instructions"],
-  total_time: "estimated time if possible",
-  calories: "estimated or leave blank",
-  categories: ["e.g. salad, snack, tiktok trend"],
-  language: "original language of the transcript"
-}
-
-Only respond with valid JSON. If you cannot extract something, leave the field empty.
-"""
-                },
-                {
-                    "role": "user",
-                    "content": text
-                }
-            ]
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Извлеки информацию о рецепте из следующего текста:\n\n{text}"}
+            ],
+            temperature=0.3,
+            max_tokens=1000
         )
-        result = response.choices[0].message.content
-        print("GPT сырой ответ:", repr(result))
-        try:
-            return json.loads(result)
-        except Exception as e:
-            print(f"[ERROR] Не удалось распарсить JSON напрямую: {e}")
-            # Пытаемся найти JSON в тексте с помощью регулярки
-            match = re.search(r'\{[\s\S]*\}', result)
-            if match:
-                json_str = match.group(0)
-                try:
-                    return json.loads(json_str)
-                except Exception as e2:
-                    print(f"[ERROR] Не удалось распарсить найденный JSON: {e2}")
-            # Если не удалось — возвращаем информативную ошибку
-            raise Exception(f"GPT вернул невалидный JSON. Сырой ответ: {result}")
+        
+        content = response.choices[0].message.content
+        recipe_data = json.loads(content)
+        
+        return recipe_data
+        
     except Exception as e:
-        raise Exception(f"Error extracting recipe: {str(e)}")
+        print(f"Error extracting recipe from text: {e}")
+        return {
+            "title": "Recipe",
+            "description": "Recipe extracted from text",
+            "ingredients": [],
+            "instructions": [],
+            "cooking_time": 30,
+            "servings": 2,
+            "difficulty": "Easy",
+            "cuisine": "International",
+            "tags": []
+        }
 
-async def transcribe_audio(audio_path: str) -> str:
+def parse_ingredients(text: str) -> List[str]:
     """
-    Транскрибирует аудиофайл с помощью OpenAI Whisper (новый синтаксис openai>=1.0.0)
+    Парсит ингредиенты из текста
     """
-    try:
-        with open(audio_path, "rb") as audio_file:
-            transcript = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file
-            )
-        return transcript.text
-    except Exception as e:
-        raise Exception(f"Error transcribing audio: {e}") 
+    ingredients = []
+    
+    # Ищем паттерны ингредиентов
+    lines = text.split('\n')
+    for line in lines:
+        line = line.strip()
+        if line and any(keyword in line.lower() for keyword in ['г', 'кг', 'мл', 'л', 'шт', 'ст', 'ч.л', 'ст.л']):
+            ingredients.append(line)
+    
+    return ingredients
+
+def parse_instructions(text: str) -> List[str]:
+    """
+    Парсит инструкции из текста
+    """
+    instructions = []
+    
+    # Ищем пронумерованные шаги
+    lines = text.split('\n')
+    for line in lines:
+        line = line.strip()
+        if line and re.match(r'^\d+\.', line):
+            instructions.append(line)
+    
+    return instructions
+
+def estimate_cooking_time(instructions: List[str]) -> int:
+    """
+    Оценивает время приготовления на основе количества шагов
+    """
+    if not instructions:
+        return 30
+    
+    # Примерная оценка: 5 минут на шаг
+    estimated_time = len(instructions) * 5
+    
+    # Ограничиваем разумными пределами
+    return min(max(estimated_time, 15), 180)
+
+def determine_difficulty(cooking_time: int, ingredients_count: int) -> str:
+    """
+    Определяет сложность рецепта
+    """
+    if cooking_time <= 30 and ingredients_count <= 5:
+        return "Easy"
+    elif cooking_time <= 60 and ingredients_count <= 10:
+        return "Medium"
+    else:
+        return "Hard"
+
+def determine_cuisine(title: str, ingredients: List[str]) -> str:
+    """
+    Определяет кухню на основе названия и ингредиентов
+    """
+    title_lower = title.lower()
+    ingredients_text = ' '.join(ingredients).lower()
+    
+    cuisine_keywords = {
+        "italian": ["паста", "ризотто", "пицца", "базилик", "пармезан", "оливковое масло"],
+        "chinese": ["соя", "имбирь", "кунжут", "лапша", "рис", "китайский"],
+        "japanese": ["суши", "мисо", "васаби", "нори", "японский"],
+        "indian": ["карри", "куркума", "имбирь", "кокосовое молоко", "индийский"],
+        "mexican": ["чили", "авокадо", "кукуруза", "мексиканский", "тако"],
+        "french": ["вино", "лук", "чеснок", "французский", "соус"],
+        "mediterranean": ["оливки", "оливковое масло", "средиземноморский", "фета"],
+        "american": ["бургер", "барбекю", "американский", "чизбургер"]
+    }
+    
+    for cuisine, keywords in cuisine_keywords.items():
+        if any(keyword in title_lower or keyword in ingredients_text for keyword in keywords):
+            return cuisine.capitalize()
+    
+    return "International" 

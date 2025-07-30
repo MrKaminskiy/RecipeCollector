@@ -1,0 +1,15 @@
+# MongoDB Configuration
+MONGODB_URL=mongodb://localhost:27017
+MONGODB_DATABASE=recipio
+
+# OpenAI API Key
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Redis Configuration (для Celery)
+REDIS_URL=redis://localhost:6379
+
+# RapidAPI Key (для Instagram Reels)
+RAPIDAPI_KEY=your_rapidapi_key_here
+
+# JWT Secret (для аутентификации)
+JWT_SECRET=your_jwt_secret_here 
