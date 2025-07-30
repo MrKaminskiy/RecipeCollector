@@ -100,7 +100,10 @@ async def extract_recipe_with_gpt(text: str, url: str) -> Dict[str, Any]:
         URL: {url}
         """
         
-        response = await openai.ChatCompletion.acreate(
+        # Используем новый API OpenAI
+        client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -166,7 +169,10 @@ async def extract_recipe_from_text(text: str) -> Dict[str, Any]:
         6. tags: добавь релевантные теги
         """
         
-        response = await openai.ChatCompletion.acreate(
+        # Используем новый API OpenAI
+        client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -200,12 +206,11 @@ def parse_ingredients(text: str) -> List[str]:
     Парсит ингредиенты из текста
     """
     ingredients = []
-    
-    # Ищем паттерны ингредиентов
     lines = text.split('\n')
+    
     for line in lines:
         line = line.strip()
-        if line and any(keyword in line.lower() for keyword in ['г', 'кг', 'мл', 'л', 'шт', 'ст', 'ч.л', 'ст.л']):
+        if line and any(keyword in line.lower() for keyword in ['г', 'кг', 'мл', 'л', 'шт', 'по вкусу', 'щепотка']):
             ingredients.append(line)
     
     return ingredients
@@ -215,28 +220,22 @@ def parse_instructions(text: str) -> List[str]:
     Парсит инструкции из текста
     """
     instructions = []
-    
-    # Ищем пронумерованные шаги
     lines = text.split('\n')
+    
     for line in lines:
         line = line.strip()
-        if line and re.match(r'^\d+\.', line):
+        if line and any(keyword in line.lower() for keyword in ['шаг', 'этап', 'шаг', '1.', '2.', '3.', '4.', '5.']):
             instructions.append(line)
     
     return instructions
 
 def estimate_cooking_time(instructions: List[str]) -> int:
     """
-    Оценивает время приготовления на основе количества шагов
+    Оценивает время приготовления на основе количества инструкций
     """
-    if not instructions:
-        return 30
-    
-    # Примерная оценка: 5 минут на шаг
-    estimated_time = len(instructions) * 5
-    
-    # Ограничиваем разумными пределами
-    return min(max(estimated_time, 15), 180)
+    base_time = 30
+    time_per_step = 10
+    return base_time + (len(instructions) * time_per_step)
 
 def determine_difficulty(cooking_time: int, ingredients_count: int) -> str:
     """
@@ -256,19 +255,18 @@ def determine_cuisine(title: str, ingredients: List[str]) -> str:
     title_lower = title.lower()
     ingredients_text = ' '.join(ingredients).lower()
     
-    cuisine_keywords = {
-        "italian": ["паста", "ризотто", "пицца", "базилик", "пармезан", "оливковое масло"],
-        "chinese": ["соя", "имбирь", "кунжут", "лапша", "рис", "китайский"],
-        "japanese": ["суши", "мисо", "васаби", "нори", "японский"],
-        "indian": ["карри", "куркума", "имбирь", "кокосовое молоко", "индийский"],
-        "mexican": ["чили", "авокадо", "кукуруза", "мексиканский", "тако"],
-        "french": ["вино", "лук", "чеснок", "французский", "соус"],
-        "mediterranean": ["оливки", "оливковое масло", "средиземноморский", "фета"],
-        "american": ["бургер", "барбекю", "американский", "чизбургер"]
+    cuisines = {
+        'italian': ['паста', 'ризотто', 'пицца', 'базилик', 'оливковое масло'],
+        'chinese': ['рис', 'соя', 'имбирь', 'чеснок', 'кунжут'],
+        'japanese': ['суши', 'сашими', 'мисо', 'васаби', 'нори'],
+        'indian': ['карри', 'куркума', 'имбирь', 'чеснок', 'кориандр'],
+        'mexican': ['тако', 'буррито', 'авокадо', 'перец чили', 'лайм'],
+        'french': ['вино', 'сыр', 'масло', 'лук', 'чеснок'],
+        'mediterranean': ['оливки', 'оливковое масло', 'томаты', 'базилик', 'фета']
     }
     
-    for cuisine, keywords in cuisine_keywords.items():
-        if any(keyword in title_lower or keyword in ingredients_text for keyword in keywords):
+    for cuisine, keywords in cuisines.items():
+        if any(keyword in title_lower for keyword in keywords) or any(keyword in ingredients_text for keyword in keywords):
             return cuisine.capitalize()
     
-    return "International" 
+    return "International"
